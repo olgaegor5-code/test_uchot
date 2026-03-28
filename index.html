@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Учёт — маникюр и педикюр</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1 class="logo">Учёт клиентов и доходов</h1>
+      <p class="tagline">Маникюр · Педикюр</p>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button type="button" class="tab is-active" data-tab="visit" role="tab" aria-selected="true">Новый визит</button>
+      <button type="button" class="tab" data-tab="history" role="tab" aria-selected="false">История</button>
+      <button type="button" class="tab" data-tab="services" role="tab" aria-selected="false">Услуги и цены</button>
+      <button type="button" class="tab" data-tab="stats" role="tab" aria-selected="false">Статистика</button>
+    </nav>
+
+    <main>
+      <section id="panel-visit" class="panel is-visible" role="tabpanel">
+        <h2 class="panel-title">Записать визит</h2>
+        <form id="form-visit" class="form">
+          <label class="field">
+            <span class="field-label">Дата</span>
+            <input type="date" id="visit-date" name="date" required />
+          </label>
+          <label class="field">
+            <span class="field-label">Клиент</span>
+            <input type="text" id="visit-client" name="client" placeholder="Имя или телефон" list="clients-datalist" autocomplete="off" />
+            <datalist id="clients-datalist"></datalist>
+          </label>
+          <fieldset class="services-fieldset">
+            <legend class="field-label">Услуги</legend>
+            <div id="visit-services" class="visit-services"></div>
+          </fieldset>
+          <div class="visit-total">
+            <span>Итого по выбранным услугам</span>
+            <strong id="visit-total-sum">0 ₽</strong>
+          </div>
+          <label class="field">
+            <span class="field-label">Комментарий <span class="optional">(необязательно)</span></span>
+            <input type="text" id="visit-note" name="note" placeholder="Например: снятие старого покрытия" />
+          </label>
+          <button type="submit" class="btn btn-primary">Сохранить визит</button>
+        </form>
+      </section>
+
+      <section id="panel-history" class="panel" role="tabpanel" hidden>
+        <div class="panel-head">
+          <h2 class="panel-title">История визитов</h2>
+          <div class="filter-row">
+            <label class="field inline">
+              <span class="field-label">Месяц</span>
+              <input type="month" id="filter-month" />
+            </label>
+            <button type="button" class="btn btn-ghost" id="filter-clear">Все даты</button>
+          </div>
+        </div>
+        <div id="history-list" class="history-list"></div>
+      </section>
+
+      <section id="panel-services" class="panel" role="tabpanel" hidden>
+        <h2 class="panel-title">Справочник услуг</h2>
+        <p class="hint">
+          Меняйте название, цену и категорию — правки сохраняются при вводе (с небольшой задержкой).
+          Порядок строк задаёт, как услуги показываются при записи визита.
+        </p>
+        <form id="form-add-service" class="form form-inline">
+          <label class="field grow">
+            <span class="field-label">Новая услуга</span>
+            <input type="text" id="new-service-name" placeholder="Название" />
+          </label>
+          <label class="field narrow">
+            <span class="field-label">Цена, ₽</span>
+            <input type="number" id="new-service-price" min="0" step="50" placeholder="1500" />
+          </label>
+          <label class="field narrow">
+            <span class="field-label">Категория</span>
+            <select id="new-service-cat">
+              <option value="manicure">Маникюр</option>
+              <option value="pedicure">Педикюр</option>
+              <option value="other">Другое</option>
+            </select>
+          </label>
+          <button type="submit" class="btn btn-secondary">Добавить</button>
+        </form>
+        <div class="services-editor-wrap">
+          <div class="services-editor-head" aria-hidden="true">
+            <span>Название услуги</span>
+            <span>Цена, ₽</span>
+            <span>Категория</span>
+            <span class="services-editor-head-actions">Порядок / удалить</span>
+          </div>
+          <div id="services-editor" class="services-editor"></div>
+        </div>
+      </section>
+
+      <section id="panel-stats" class="panel" role="tabpanel" hidden>
+        <h2 class="panel-title">Статистика</h2>
+        <div class="stats-period">
+          <label class="field inline">
+            <span class="field-label">Период</span>
+            <input type="month" id="stats-month" />
+          </label>
+        </div>
+        <div class="stats-cards">
+          <div class="stat-card">
+            <span class="stat-label">Выручка за период</span>
+            <span class="stat-value" id="stat-revenue">0 ₽</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Визитов</span>
+            <span class="stat-value" id="stat-visits">0</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Уникальных клиентов</span>
+            <span class="stat-value" id="stat-clients">0</span>
+          </div>
+        </div>
+        <h3 class="sub-title">По услугам (кол-во × сумма)</h3>
+        <div id="stat-by-service" class="stat-by-service"></div>
+        <div class="danger-zone">
+          <button type="button" class="btn btn-danger" id="btn-export-csv">Экспорт в CSV</button>
+          <button type="button" class="btn btn-danger-outline" id="btn-reset-data">Сбросить все данные</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>Данные хранятся в браузере на этом устройстве.</span>
+    </footer>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
