@@ -16,14 +16,40 @@
       <p class="tagline">Маникюр · Педикюр</p>
     </header>
 
-    <nav class="tabs" role="tablist">
-      <button type="button" class="tab is-active" data-tab="visit" role="tab" aria-selected="true">Новый визит</button>
-      <button type="button" class="tab" data-tab="history" role="tab" aria-selected="false">История</button>
-      <button type="button" class="tab" data-tab="services" role="tab" aria-selected="false">Услуги и цены</button>
-      <button type="button" class="tab" data-tab="stats" role="tab" aria-selected="false">Статистика</button>
+    <nav class="app-tabs" role="tablist" aria-label="Разделы">
+      <button type="button" class="app-tab is-active" data-app-tab="home" role="tab" aria-selected="true">Главная</button>
+      <button type="button" class="app-tab" data-app-tab="clients" role="tab" aria-selected="false">Клиенты</button>
+      <button type="button" class="app-tab" data-app-tab="services" role="tab" aria-selected="false">Услуги</button>
+      <button type="button" class="app-tab" data-app-tab="inventory" role="tab" aria-selected="false">Склад</button>
+      <button type="button" class="app-tab" data-app-tab="finance" role="tab" aria-selected="false">Финансы</button>
     </nav>
 
     <main>
+      <section id="home" class="app-block">
+        <nav class="tabs" role="tablist" aria-label="Главная">
+          <button type="button" class="tab is-active" data-tab="visit" role="tab" aria-selected="true">Новый визит</button>
+          <button type="button" class="tab" data-tab="history" role="tab" aria-selected="false">История</button>
+        </nav>
+
+        <div class="home-cards" role="region" aria-label="Сводка">
+          <div class="home-card">
+            <span class="home-card-label">Доход</span>
+            <span class="home-card-value" id="home-card-income">0 ₽</span>
+          </div>
+          <div class="home-card">
+            <span class="home-card-label">Расход</span>
+            <span class="home-card-value" id="home-card-expense">0 ₽</span>
+          </div>
+          <div class="home-card">
+            <span class="home-card-label">Прибыль</span>
+            <span class="home-card-value" id="home-card-profit">0 ₽</span>
+          </div>
+          <div class="home-card">
+            <span class="home-card-label">Клиенты</span>
+            <span class="home-card-value home-card-value--count" id="home-card-clients">0</span>
+          </div>
+        </div>
+
       <section id="panel-visit" class="panel is-visible" role="tabpanel">
         <h2 class="panel-title">Записать визит</h2>
         <form id="form-visit" class="form">
@@ -65,8 +91,22 @@
         </div>
         <div id="history-list" class="history-list"></div>
       </section>
+      </section>
 
-      <section id="panel-services" class="panel" role="tabpanel" hidden>
+      <section id="clients" class="app-block" hidden>
+        <section class="panel" role="tabpanel">
+          <h2 class="panel-title">Клиенты</h2>
+          <p class="hint">Клиенты из справочника.</p>
+          <label class="field clients-search-field">
+            <span class="field-label">Поиск по имени</span>
+            <input type="search" id="clients-search" autocomplete="off" placeholder="Начните вводить имя…" />
+          </label>
+          <div id="clients-directory" class="clients-directory"></div>
+        </section>
+      </section>
+
+      <section id="services" class="app-block" hidden>
+      <section id="panel-services" class="panel" role="tabpanel">
         <h2 class="panel-title">Справочник услуг</h2>
         <p class="hint">
           Меняйте название, цену и категорию — правки сохраняются при вводе (с небольшой задержкой).
@@ -101,8 +141,17 @@
           <div id="services-editor" class="services-editor"></div>
         </div>
       </section>
+      </section>
 
-      <section id="panel-stats" class="panel" role="tabpanel" hidden>
+      <section id="inventory" class="app-block" hidden>
+        <section class="panel" role="tabpanel">
+          <h2 class="panel-title">Склад</h2>
+          <p class="hint">Учёт расходников и остатков — в разработке.</p>
+        </section>
+      </section>
+
+      <section id="finance" class="app-block" hidden>
+      <section id="panel-stats" class="panel" role="tabpanel">
         <h2 class="panel-title">Статистика</h2>
         <div class="stats-period">
           <label class="field inline">
@@ -131,11 +180,48 @@
           <button type="button" class="btn btn-danger-outline" id="btn-reset-data">Сбросить все данные</button>
         </div>
       </section>
+      </section>
     </main>
 
     <footer class="footer">
       <span>Данные хранятся в браузере на этом устройстве.</span>
     </footer>
+
+    <button type="button" class="fab" id="fab-add" aria-label="Новый визит">+</button>
+  </div>
+
+  <div id="modal-overlay" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-client-title">
+      <button type="button" class="modal-close" id="modal-close" aria-label="Закрыть">×</button>
+      <h2 id="modal-client-title" class="modal-title">Новый клиент</h2>
+      <form id="form-new-client" class="form modal-form" novalidate>
+        <label class="field">
+          <span class="field-label">Имя</span>
+          <input type="text" id="client-new-name" name="name" required autocomplete="name" />
+        </label>
+        <label class="field">
+          <span class="field-label">Телефон</span>
+          <input type="tel" id="client-new-phone" name="phone" autocomplete="tel" />
+        </label>
+        <label class="field">
+          <span class="field-label">Email</span>
+          <input type="email" id="client-new-email" name="email" autocomplete="email" />
+        </label>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="consent-modal-overlay" class="modal-overlay consent-modal-overlay" hidden>
+    <div class="modal modal-consent" role="dialog" aria-modal="true" aria-labelledby="consent-modal-title">
+      <button type="button" class="modal-close" id="consent-modal-close" aria-label="Закрыть">×</button>
+      <h2 id="consent-modal-title" class="modal-title">Согласие</h2>
+      <p id="consent-modal-body" class="consent-modal-body"></p>
+      <div class="consent-modal-actions">
+        <button type="button" class="btn btn-ghost" id="consent-modal-cancel">Отмена</button>
+        <button type="button" class="btn btn-primary" id="consent-modal-confirm">Подтвердить</button>
+      </div>
+    </div>
   </div>
   <script src="app.js"></script>
 </body>

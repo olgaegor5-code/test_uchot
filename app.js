@@ -28,6 +28,33 @@
     return { ...s, name, price, category };
   }
 
+  function normalizeConsentSlot(s) {
+    const o = s && typeof s === "object" ? s : {};
+    let status = false;
+    if (typeof o.status === "boolean") status = o.status;
+    else if (typeof o.status === "string" && o.status.trim().toLowerCase() === "granted") status = true;
+    else if (typeof o.status === "string" && o.status.trim() !== "") status = true;
+    const date = typeof o.date === "string" ? o.date.trim() : "";
+    return { status, date };
+  }
+
+  function normalizeConsents(raw) {
+    const c = raw && typeof raw === "object" ? raw : {};
+    return {
+      personal_data: normalizeConsentSlot(c.personal_data),
+      photo: normalizeConsentSlot(c.photo),
+    };
+  }
+
+  function normalizeClient(c) {
+    const id = typeof c.id === "string" && c.id.trim() ? c.id.trim() : uid();
+    const name = typeof c.name === "string" ? c.name.trim() : "";
+    const phone = typeof c.phone === "string" ? c.phone.trim() : "";
+    const email = typeof c.email === "string" ? c.email.trim() : "";
+    const consents = normalizeConsents(c.consents);
+    return { id, name, phone, email, consents };
+  }
+
   function debounce(fn, ms) {
     let t;
     function run() {
@@ -48,16 +75,35 @@
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) {
-        return { services: defaultServices.map((s) => ({ ...s })), visits: [] };
+        return {
+          services: defaultServices.map((s) => ({ ...s })),
+          visits: [],
+          expenses: 0,
+          clients: [],
+        };
       }
       const data = JSON.parse(raw);
       if (!Array.isArray(data.services) || !Array.isArray(data.visits)) {
-        return { services: defaultServices.map((s) => ({ ...s })), visits: [] };
+        return {
+          services: defaultServices.map((s) => ({ ...s })),
+          visits: [],
+          expenses: 0,
+          clients: [],
+        };
       }
       data.services = data.services.map(normalizeService);
+      if (typeof data.expenses !== "number" || !Number.isFinite(data.expenses)) data.expenses = 0;
+      data.expenses = Math.max(0, Math.round(data.expenses));
+      if (!Array.isArray(data.clients)) data.clients = [];
+      else data.clients = data.clients.map(normalizeClient);
       return data;
     } catch {
-      return { services: defaultServices.map((s) => ({ ...s })), visits: [] };
+      return {
+        services: defaultServices.map((s) => ({ ...s })),
+        visits: [],
+        expenses: 0,
+        clients: [],
+      };
     }
   }
 
@@ -73,8 +119,8 @@
   }, 380);
 
   const els = {
-    tabs: document.querySelectorAll(".tab"),
-    panels: document.querySelectorAll(".panel"),
+    tabs: document.querySelectorAll("#home .tab"),
+    panels: document.querySelectorAll("#home .panel"),
     formVisit: document.getElementById("form-visit"),
     visitDate: document.getElementById("visit-date"),
     visitClient: document.getElementById("visit-client"),
@@ -97,6 +143,25 @@
     statByService: document.getElementById("stat-by-service"),
     btnExportCsv: document.getElementById("btn-export-csv"),
     btnResetData: document.getElementById("btn-reset-data"),
+    clientsDirectory: document.getElementById("clients-directory"),
+    clientsSearch: document.getElementById("clients-search"),
+    homeCardIncome: document.getElementById("home-card-income"),
+    homeCardExpense: document.getElementById("home-card-expense"),
+    homeCardProfit: document.getElementById("home-card-profit"),
+    homeCardClients: document.getElementById("home-card-clients"),
+    fabAdd: document.getElementById("fab-add"),
+    modalOverlay: document.getElementById("modal-overlay"),
+    modalClose: document.getElementById("modal-close"),
+    formNewClient: document.getElementById("form-new-client"),
+    clientNewName: document.getElementById("client-new-name"),
+    clientNewPhone: document.getElementById("client-new-phone"),
+    clientNewEmail: document.getElementById("client-new-email"),
+    consentModalOverlay: document.getElementById("consent-modal-overlay"),
+    consentModalClose: document.getElementById("consent-modal-close"),
+    consentModalCancel: document.getElementById("consent-modal-cancel"),
+    consentModalConfirm: document.getElementById("consent-modal-confirm"),
+    consentModalTitle: document.getElementById("consent-modal-title"),
+    consentModalBody: document.getElementById("consent-modal-body"),
   };
 
   function formatMoney(n) {
@@ -105,6 +170,25 @@
         maximumFractionDigits: 0,
       }).format(n) + " ₽"
     );
+  }
+
+  function renderHomeCards() {
+    if (!els.homeCardIncome) return;
+    let income = 0;
+    state.visits.forEach((v) => {
+      income += visitTotal(v);
+    });
+    const expense = typeof state.expenses === "number" ? state.expenses : 0;
+    const profit = income - expense;
+    const uniqueClients = new Set();
+    state.visits.forEach((v) => {
+      const c = (v.client || "").trim();
+      if (c) uniqueClients.add(c.toLowerCase());
+    });
+    els.homeCardIncome.textContent = formatMoney(income);
+    els.homeCardExpense.textContent = formatMoney(expense);
+    els.homeCardProfit.textContent = formatMoney(profit);
+    els.homeCardClients.textContent = String(uniqueClients.size);
   }
 
   function todayISODate() {
@@ -118,6 +202,66 @@
   function currentMonthValue() {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  const CONSENT_TEXTS = {
+    personal_data: {
+      title: "Согласие на обработку персональных данных",
+      body:
+        "Субъект персональных данных даёт согласие на обработку персональных данных в целях оказания услуг, ведения учёта и исполнения договора. Отзыв согласия возможен в письменной форме.",
+    },
+    photo: {
+      title: "Согласие на использование фото",
+      body:
+        "Клиент даёт согласие на создание и использование фотоматериалов, в том числе в портфолио и рекламных целях мастера, в рамках оказания услуг.",
+    },
+  };
+
+  let consentModalPending = { clientId: null, key: null };
+
+  function setClientConsent(clientId, key, checked) {
+    if (key !== "personal_data" && key !== "photo") return;
+    const client = state.clients.find((x) => x.id === clientId);
+    if (!client) return;
+    if (!client.consents) client.consents = normalizeConsents({});
+    const slot = client.consents[key];
+    if (checked) {
+      slot.status = true;
+      slot.date = todayISODate();
+    } else {
+      slot.status = false;
+      slot.date = "";
+    }
+    saveState(state);
+  }
+
+  function openConsentModal(clientId, key) {
+    if (key !== "personal_data" && key !== "photo") return;
+    const t = CONSENT_TEXTS[key];
+    if (!t || !els.consentModalOverlay) return;
+    consentModalPending = { clientId, key };
+    if (els.consentModalTitle) els.consentModalTitle.textContent = t.title;
+    if (els.consentModalBody) els.consentModalBody.textContent = t.body;
+    els.consentModalOverlay.hidden = false;
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeConsentModal() {
+    if (!els.consentModalOverlay) return;
+    els.consentModalOverlay.hidden = true;
+    consentModalPending = { clientId: null, key: null };
+    if (!els.modalOverlay || els.modalOverlay.hidden) {
+      document.body.style.overflow = "";
+    }
+  }
+
+  function confirmConsentModal() {
+    const { clientId, key } = consentModalPending;
+    if (clientId && key) {
+      setClientConsent(clientId, key, true);
+      renderClientsDirectory();
+    }
+    closeConsentModal();
   }
 
   function visitTotal(visit) {
@@ -250,6 +394,8 @@
           saveState(state);
           renderHistory();
           refreshClientsDatalist();
+          renderClientsDirectory();
+          renderHomeCards();
           renderStats();
         }
       });
@@ -457,7 +603,114 @@
           p.hidden = !show;
         });
         if (id === "history") renderHistory();
-        if (id === "stats") renderStats();
+      });
+    });
+  }
+
+  function renderClientsDirectory() {
+    if (!els.clientsDirectory) return;
+    const all = state.clients || [];
+    const q = (els.clientsSearch && els.clientsSearch.value) || "";
+    const qn = q.trim().toLowerCase();
+    let list = [...all].sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    if (qn) {
+      list = list.filter((c) => (c.name || "").toLowerCase().includes(qn));
+    }
+    els.clientsDirectory.innerHTML = "";
+    if (!list.length) {
+      els.clientsDirectory.innerHTML =
+        '<p class="empty-state">' +
+        (all.length
+          ? "Никого не найдено."
+          : 'Список пуст. Добавьте клиента через кнопку «+».') +
+        "</p>";
+      return;
+    }
+    list.forEach((c) => {
+      const card = document.createElement("div");
+      card.className = "client-card";
+
+      const head = document.createElement("div");
+      head.className = "client-row-head";
+      const nameEl = document.createElement("span");
+      nameEl.className = "client-row-name";
+      nameEl.textContent = c.name;
+      const phoneEl = document.createElement("span");
+      phoneEl.className = "client-row-phone";
+      phoneEl.textContent = (c.phone || "").trim() || "—";
+      head.appendChild(nameEl);
+      head.appendChild(phoneEl);
+      card.appendChild(head);
+
+      const consents = document.createElement("div");
+      consents.className = "client-consents";
+      const consTitle = document.createElement("div");
+      consTitle.className = "client-consents-title";
+      consTitle.textContent = "Согласия";
+      consents.appendChild(consTitle);
+
+      function addConsentRow(label, key) {
+        const row = document.createElement("div");
+        row.className = "client-consent-row";
+        const lab = document.createElement("label");
+        lab.className = "client-consent-check";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = !!(c.consents && c.consents[key] && c.consents[key].status === true);
+        input.addEventListener("change", () => {
+          if (!input.checked) {
+            setClientConsent(c.id, key, false);
+            return;
+          }
+          input.checked = false;
+          openConsentModal(c.id, key);
+        });
+        const span = document.createElement("span");
+        span.textContent = label;
+        lab.appendChild(input);
+        lab.appendChild(span);
+        const btnText = document.createElement("button");
+        btnText.type = "button";
+        btnText.className = "btn-consent-text";
+        btnText.textContent = "Показать текст";
+        btnText.addEventListener("click", () => {
+          openConsentModal(c.id, key);
+        });
+        row.appendChild(lab);
+        row.appendChild(btnText);
+        consents.appendChild(row);
+      }
+      addConsentRow("Персональные данные", "personal_data");
+      addConsentRow("Фото", "photo");
+
+      card.appendChild(consents);
+      els.clientsDirectory.appendChild(card);
+    });
+  }
+
+  function initAppTabs() {
+    const appTabs = document.querySelectorAll(".app-tab");
+    const blocks = {
+      home: document.getElementById("home"),
+      clients: document.getElementById("clients"),
+      services: document.getElementById("services"),
+      inventory: document.getElementById("inventory"),
+      finance: document.getElementById("finance"),
+    };
+    appTabs.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.getAttribute("data-app-tab");
+        appTabs.forEach((t) => {
+          t.classList.toggle("is-active", t === btn);
+          t.setAttribute("aria-selected", t === btn ? "true" : "false");
+        });
+        Object.entries(blocks).forEach(([k, el]) => {
+          if (!el) return;
+          el.hidden = k !== key;
+        });
+        if (key === "home") renderHomeCards();
+        if (key === "clients") renderClientsDirectory();
+        if (key === "finance") renderStats();
       });
     });
   }
@@ -493,6 +746,8 @@
     });
     updateVisitTotal();
     refreshClientsDatalist();
+    renderClientsDirectory();
+    renderHomeCards();
     renderStats();
     alert("Визит сохранён.");
   });
@@ -570,8 +825,72 @@
     renderVisitServices();
     renderServicesEditor();
     renderHistory();
+    renderClientsDirectory();
+    renderHomeCards();
     renderStats();
     refreshClientsDatalist();
+  });
+
+  function resetClientForm() {
+    if (els.formNewClient) els.formNewClient.reset();
+  }
+
+  function openModal() {
+    if (!els.modalOverlay) return;
+    resetClientForm();
+    els.modalOverlay.hidden = false;
+    document.body.style.overflow = "hidden";
+    setTimeout(() => els.clientNewName && els.clientNewName.focus(), 0);
+  }
+
+  function closeModal() {
+    if (!els.modalOverlay) return;
+    els.modalOverlay.hidden = true;
+    resetClientForm();
+    if (!els.consentModalOverlay || els.consentModalOverlay.hidden) {
+      document.body.style.overflow = "";
+    }
+  }
+
+  if (els.fabAdd) els.fabAdd.addEventListener("click", openModal);
+  if (els.modalClose) els.modalClose.addEventListener("click", closeModal);
+  if (els.clientsSearch) {
+    els.clientsSearch.addEventListener("input", renderClientsDirectory);
+  }
+
+  if (els.consentModalClose) els.consentModalClose.addEventListener("click", closeConsentModal);
+  if (els.consentModalCancel) els.consentModalCancel.addEventListener("click", closeConsentModal);
+  if (els.consentModalConfirm) els.consentModalConfirm.addEventListener("click", confirmConsentModal);
+
+  if (els.formNewClient) {
+    els.formNewClient.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const name = (els.clientNewName && els.clientNewName.value) || "";
+      const phone = (els.clientNewPhone && els.clientNewPhone.value) || "";
+      const email = (els.clientNewEmail && els.clientNewEmail.value) || "";
+      if (!name.trim()) {
+        alert("Введите имя.");
+        return;
+      }
+      state.clients.push(
+        normalizeClient({
+          id: uid(),
+          name,
+          phone,
+          email,
+        })
+      );
+      saveState(state);
+      renderClientsDirectory();
+      closeModal();
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && els.consentModalOverlay && !els.consentModalOverlay.hidden) {
+      closeConsentModal();
+      return;
+    }
+    if (e.key === "Escape" && els.modalOverlay && !els.modalOverlay.hidden) closeModal();
   });
 
   els.visitDate.value = todayISODate();
@@ -579,9 +898,12 @@
   els.statsMonth.value = currentMonthValue();
 
   initTabs();
+  initAppTabs();
   renderVisitServices();
   renderServicesEditor();
   renderHistory();
+  renderHomeCards();
   renderStats();
+  renderClientsDirectory();
   refreshClientsDatalist();
 })();
